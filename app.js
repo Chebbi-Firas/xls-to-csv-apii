@@ -3,60 +3,63 @@ import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
 // @ts-ignore
 import xlsToJson from "xls-to-json-lc";
-
 import { Parser } from "json2csv";
 
 const app = express();
 
-// Pour accepter les fichiers binaires envoyés depuis Power Automate
+// ✅ Middleware pour accepter des fichiers binaires bruts (max 10 Mo)
 app.use(express.raw({ type: "application/octet-stream", limit: "10mb" }));
 
 app.post("/convert", async (req, res) => {
   console.log("✅ Requête reçue sur /convert");
 
-  // Vérifie si un fichier est bien envoyé
-  if (!req.body || !(req.body instanceof Buffer)) {
+  // 📌 DEBUG : Logs pour Render
+  console.log("🧪 Type req.body:", typeof req.body);
+  console.log("🧪 Est Buffer:", Buffer.isBuffer(req.body));
+  console.log("🧪 Taille:", req.body?.length || 0);
+
+  if (!req.body || !Buffer.isBuffer(req.body)) {
     console.error("❌ Aucune donnée reçue ou format incorrect");
     return res.status(400).json({ error: "No valid file data received" });
   }
 
   const tempFilePath = `/tmp/${uuidv4()}.xls`;
-  console.log("📁 Chemin du fichier temporaire :", tempFilePath);
+  console.log("📁 Création du fichier temporaire :", tempFilePath);
 
   try {
-    // Sauvegarde le fichier temporairement
+    // 🔧 Écriture temporaire du fichier .xls
     fs.writeFileSync(tempFilePath, req.body);
-    console.log("✅ Fichier .xls écrit avec succès");
+    console.log("✅ Fichier temporaire écrit avec succès");
 
-    // Conversion XLS → JSON
-    const result = await new Promise((resolve, reject) => {
-      xlsToJson({ input: tempFilePath, output: null }, (err, jsonResult) => {
-        if (err) {
-          console.error("❌ Erreur lors de la conversion XLS → JSON :", err);
-          return reject(err);
-        }
-        if (!jsonResult || jsonResult.length === 0) {
-          console.error("❌ Le fichier est vide ou mal formaté.");
+    // 🔄 Conversion XLS → JSON
+    const jsonResult = await new Promise((resolve, reject) => {
+      xlsToJson({ input: tempFilePath, output: null }, (err, result) => {
+        if (err) return reject(err);
+        if (!result || result.length === 0) {
           return reject(new Error("XLS file is empty or invalid"));
         }
-        console.log("✅ Conversion vers JSON réussie :", jsonResult.length, "lignes");
-        resolve(jsonResult);
+        resolve(result);
       });
     });
 
-    // Conversion JSON → CSV
+    console.log(`✅ Conversion JSON réussie (${jsonResult.length} lignes)`);
+
+    // 🔁 Conversion JSON → CSV
     const parser = new Parser();
-    const csv = parser.parse(result);
+    const csv = parser.parse(jsonResult);
     console.log("✅ Conversion JSON → CSV terminée");
 
-    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.status(200).send(csv);
     console.log("📤 Fichier CSV envoyé au client");
   } catch (err) {
-    console.error("❌ Erreur finale :", err.message);
-    res.status(500).json({ error: "Conversion failed", details: err.message });
+    console.error("❌ Erreur de traitement :", err.message);
+    res.status(500).json({
+      error: "Conversion failed",
+      details: err.message,
+    });
   } finally {
-    // Nettoyage du fichier temporaire
+    // 🧹 Suppression du fichier temporaire
     if (fs.existsSync(tempFilePath)) {
       fs.unlinkSync(tempFilePath);
       console.log("🧹 Fichier temporaire supprimé");
@@ -64,8 +67,8 @@ app.post("/convert", async (req, res) => {
   }
 });
 
-app.listen(3000, '0.0.0.0', () => {
-    console.log("🚀 API XLS ➜ CSV en ligne sur http://localhost:3000/convert");
-  });
-  
-
+// ✅ Pour Docker / Render
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 API en ligne : http://localhost:${PORT}/convert`);
+});
