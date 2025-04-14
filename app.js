@@ -64,6 +64,8 @@ app.post("/convert", async (req, res) => {
   }
 });
 
-app.listen(3000, () => {
-  console.log("🚀 API XLS ➜ CSV en ligne sur http://localhost:3000/convert");
-});
+app.listen(3000, '0.0.0.0', () => {
+    console.log("🚀 API XLS ➜ CSV en ligne sur http://localhost:3000/convert");
+  });
+  
+
